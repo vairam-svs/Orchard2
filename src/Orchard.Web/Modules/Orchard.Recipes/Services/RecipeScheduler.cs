@@ -6,6 +6,7 @@ using Orchard.Environment.Shell.Descriptor;
 using Orchard.Environment.Shell.State;
 using Orchard.Events;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Orchard.Recipes.Services
 {
@@ -46,7 +47,7 @@ namespace Orchard.Recipes.Services
                 if (scheduleMore)
                 {
                     _logger.LogInformation("Scheduling next step of recipe.");
-                    ScheduleWork(executionId);
+                    ScheduleWork(executionId).Wait();
                 }
                 else {
                     _logger.LogInformation("All recipe steps executed; restarting shell.");
@@ -63,9 +64,9 @@ namespace Orchard.Recipes.Services
             }
         }
 
-        public void ScheduleWork(string executionId)
+        public async Task ScheduleWork(string executionId)
         {
-            var shellDescriptor = _shellDescriptorManager.GetShellDescriptorAsync().Result;
+            var shellDescriptor = await _shellDescriptorManager.GetShellDescriptorAsync();
 
             _processingEngine.AddTask(
                 _shellSettings,

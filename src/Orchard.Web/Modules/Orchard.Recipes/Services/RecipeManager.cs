@@ -53,16 +53,18 @@ namespace Orchard.Recipes.Services
 
             _executionIds.SetState(executionId);
 
+            _logger.LogInformation("Executing recipe '{0}'.", recipe.Name);
             try
             {
-                _logger.LogInformation("Executing recipe '{0}'.", recipe.Name);
-                await _eventBus.NotifyAsync<IRecipeExecuteEventHandler>(x => x.ExecutionStart(executionId, recipe));
+                _eventBus
+                    .NotifyAsync<IRecipeExecuteEventHandler>(x => x.ExecutionStart(executionId, recipe))
+                    .Wait();
 
                 foreach (var recipeStep in recipe.RecipeSteps)
                 {
                     ExecuteRecipeStep(executionId, recipeStep);
                 }
-                _recipeScheduler.ScheduleWork(executionId);
+                await _recipeScheduler.ScheduleWork(executionId);
 
                 return executionId;
             }
