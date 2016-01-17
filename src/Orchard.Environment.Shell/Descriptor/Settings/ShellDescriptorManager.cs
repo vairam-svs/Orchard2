@@ -87,7 +87,6 @@ namespace Orchard.Environment.Shell.Descriptor.Settings
 
             if (_logger.IsEnabled(LogLevel.Information))
             {
-
                 _logger.LogInformation("Shell descriptor updated for shell '{0}'.", _shellSettings.Name);
             }
 

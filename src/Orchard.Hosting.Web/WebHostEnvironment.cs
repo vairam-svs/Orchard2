@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.PlatformAbstractions;
 using Orchard.Localization;
+
 namespace Orchard.Hosting
 {
     public class WebHostEnvironment : HostEnvironment

@@ -1,9 +1,9 @@
-﻿using System.Xml.Linq;
-
-namespace Orchard.Environment.Recipes.Models
+﻿namespace Orchard.Environment.Recipes.Models
 {
     public class RecipeStepResult
     {
+        public string ExecutionId { get; set; }
+        public string StepId { get; set; }
         public string RecipeName { get; set; }
         public string StepName { get; set; }
         public bool IsCompleted { get; set; }

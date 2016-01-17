@@ -4,6 +4,7 @@ using Microsoft.AspNet.Http;
 using Microsoft.AspNet.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using Orchard.Environment.Shell;
 
 namespace Orchard.Hosting.Web.Routing

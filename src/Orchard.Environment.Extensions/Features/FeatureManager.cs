@@ -94,7 +94,7 @@ namespace Orchard.Environment.Extensions.Features
                 .Select(featureId => EnableFeature(featureId, availableFeatures, force)).ToList()
                 .SelectMany(ies => ies.Select(s => s));
 
-            if (featuresToEnable.Count() > 0)
+            if (featuresToEnable.Any())
             {
                 foreach (string featureId in featuresToEnable)
                 {
@@ -140,7 +140,6 @@ namespace Orchard.Environment.Extensions.Features
             {
                 var disabled = await DisableFeatureAsync(featureId, force);
                 featuresToDisable.AddRange(disabled);
-
             }
 
             if (featuresToDisable.Any())

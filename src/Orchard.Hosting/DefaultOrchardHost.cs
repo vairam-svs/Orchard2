@@ -4,6 +4,7 @@ using Orchard.Environment.Shell.Builders;
 using Orchard.Environment.Shell.Descriptor;
 using Orchard.Environment.Shell.Descriptor.Models;
 using Orchard.Environment.Shell.Models;
+using Orchard.Environment.Shell.State;
 using Orchard.Hosting.ShellBuilders;
 using System;
 using System.Collections.Concurrent;
@@ -18,6 +19,7 @@ namespace Orchard.Hosting
         private readonly IShellSettingsManager _shellSettingsManager;
         private readonly IShellContextFactory _shellContextFactory;
         private readonly IRunningShellTable _runningShellTable;
+        private readonly IProcessingEngine _processingEngine;
         private readonly ILogger _logger;
 
         private readonly static object _syncLock = new object();
@@ -27,8 +29,10 @@ namespace Orchard.Hosting
             IShellSettingsManager shellSettingsManager,
             IShellContextFactory shellContextFactory,
             IRunningShellTable runningShellTable,
+            IProcessingEngine processingEngine,
             ILogger<DefaultOrchardHost> logger)
         {
+            _processingEngine = processingEngine;
             _shellSettingsManager = shellSettingsManager;
             _shellContextFactory = shellContextFactory;
             _runningShellTable = runningShellTable;
@@ -109,6 +113,11 @@ namespace Orchard.Hosting
                         }
 
                         _logger.LogError(string.Format("A tenant could not be started: {0}", settings.Name), ex);
+                    }
+                    while (_processingEngine.AreTasksPending())
+                    {
+                        _logger.LogDebug("Processing pending task after activate Shell");
+                        _processingEngine.ExecuteNextTask();
                     }
                 });
             }

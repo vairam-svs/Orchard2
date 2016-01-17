@@ -74,7 +74,7 @@ namespace Orchard.Environment.Shell.Builders
                     else if (typeof(ITransientDependency).IsAssignableFrom(interfaceType))
                     {
                         tenantServiceCollection.AddTransient(interfaceType, dependency.Type);
-                    }                    
+                    }
                 }
             }
 

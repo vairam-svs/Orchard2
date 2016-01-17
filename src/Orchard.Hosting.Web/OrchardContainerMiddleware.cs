@@ -6,6 +6,7 @@ using Orchard.Environment.Shell;
 using Orchard.Hosting.ShellBuilders;
 using Microsoft.Extensions.DependencyInjection;
 using Orchard.Events;
+using System;
 
 namespace Orchard.Hosting
 {

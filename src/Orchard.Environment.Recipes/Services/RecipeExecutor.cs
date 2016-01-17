@@ -1,6 +1,7 @@
 ﻿using Orchard.DependencyInjection;
 using Orchard.Environment.Recipes.Models;
 using Orchard.Environment.Shell.Descriptor;
+using System.Threading.Tasks;
 
 namespace Orchard.Environment.Recipes.Services
 {
@@ -18,13 +19,15 @@ namespace Orchard.Environment.Recipes.Services
             _shellDescriptorManager = shellDescriptorManager;
         }
 
-        public string Execute(Recipe recipe)
+        public async Task<string> ExecuteAsync(Recipe recipe)
         {
-            var executionId = _recipeManager.Execute(recipe);
+            var executionId = await _recipeManager.ExecuteAsync(recipe);
 
             // Only need to update the shell if work was actually done.
             if (executionId != null)
+            {
                 UpdateShell();
+            }
 
             return executionId;
         }

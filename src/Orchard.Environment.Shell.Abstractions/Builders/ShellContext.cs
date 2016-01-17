@@ -1,7 +1,7 @@
-﻿using System;
-using Orchard.Environment.Shell.Builders.Models;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Orchard.Environment.Shell;
-using Microsoft.Extensions.DependencyInjection;
+using Orchard.Environment.Shell.Builders.Models;
+using System;
 
 namespace Orchard.Hosting.ShellBuilders
 {
@@ -39,13 +39,13 @@ namespace Orchard.Hosting.ShellBuilders
             {
                 if (disposing)
                 {
+                    // Disposes all the services registered for this shell
+                    (ServiceProvider as IDisposable).Dispose();
                 }
 
                 Settings = null;
                 Blueprint = null;
 
-                // Disposes all the services registered for this shell
-                (ServiceProvider as IDisposable).Dispose();
                 IsActivated = false;
 
                 _disposed = true;

@@ -1,19 +1,18 @@
-﻿using System.Xml.Linq;
+﻿using Newtonsoft.Json.Linq;
 using Orchard.Environment.Recipes.Models;
-using Orchard.DependencyInjection;
 
 namespace Orchard.Environment.Recipes.Services
 {
-    public interface IRecipeParser : IDependency
+    public interface IRecipeParser
     {
-        Recipe ParseRecipe(XDocument recipeDocument);
+        Recipe ParseRecipe(JObject recipeDocument);
     }
 
     public static class RecipeParserExtensions
     {
         public static Recipe ParseRecipe(this IRecipeParser recipeParser, string recipeText)
         {
-            var recipeDocument = XDocument.Parse(recipeText, LoadOptions.PreserveWhitespace);
+            var recipeDocument = JObject.Parse(recipeText);
             return recipeParser.ParseRecipe(recipeDocument);
         }
     }

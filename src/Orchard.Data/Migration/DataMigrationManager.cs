@@ -147,7 +147,7 @@ namespace Orchard.Data.Migration
 
             // proceed with dependent features first, whatever the module it's in
             var dependencies = _extensionManager.AvailableFeatures()
-                .Where(f => String.Equals(f.Id, feature, StringComparison.OrdinalIgnoreCase))
+                .Where(f => string.Equals(f.Id, feature, StringComparison.OrdinalIgnoreCase))
                 .Where(f => f.Dependencies != null)
                 .SelectMany(f => f.Dependencies)
                 .ToList();
@@ -165,7 +165,7 @@ namespace Orchard.Data.Migration
                 // Create a new transaction for this migration
                 //await _session.CommitAsync();
 
-                _store.ExecuteMigration(async schemaBuilder =>
+                _store.ExecuteMigration(schemaBuilder =>
                 {
                     migration.SchemaBuilder = schemaBuilder;
 
@@ -173,7 +173,7 @@ namespace Orchard.Data.Migration
                     var tempMigration = migration;
 
                     // get current version for this migration
-                    var dataMigrationRecord = await GetDataMigrationRecordAsync(tempMigration);
+                    var dataMigrationRecord = GetDataMigrationRecordAsync(tempMigration).Result;
 
                     var current = 0;
                     if (dataMigrationRecord != null)
