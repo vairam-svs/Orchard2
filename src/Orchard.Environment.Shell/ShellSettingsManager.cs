@@ -1,11 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.OptionsModel;
+using Microsoft.Extensions.Options;
 using Orchard.FileSystem.AppData;
 using Orchard.Parser;
 using Orchard.Parser.Yaml;
 using Orchard.Validation;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Orchard.Environment.Shell
 {
@@ -41,11 +42,12 @@ namespace Orchard.Environment.Shell
                 }
                 var configurationContainer =
                     new ConfigurationBuilder()
-                        .AddJsonFile(_appDataFolder.Combine(tenant.PhysicalPath, string.Format(SettingsFileNameFormat, "json")),
+                        .SetBasePath(_appDataFolder.RootPath)
+                        .AddJsonFile(_appDataFolder.Combine(tenant.FullName, string.Format(SettingsFileNameFormat, "json")),
                             true)
-                        .AddXmlFile(_appDataFolder.Combine(tenant.PhysicalPath, string.Format(SettingsFileNameFormat, "xml")),
+                        .AddXmlFile(_appDataFolder.Combine(tenant.FullName, string.Format(SettingsFileNameFormat, "xml")),
                             true)
-                        .AddYamlFile(_appDataFolder.Combine(tenant.PhysicalPath, string.Format(SettingsFileNameFormat, "txt")),
+                        .AddYamlFile(_appDataFolder.Combine(tenant.FullName, string.Format(SettingsFileNameFormat, "txt")),
                             false);
 
                 var config = configurationContainer.Build();
@@ -78,8 +80,11 @@ namespace Orchard.Environment.Shell
                     shellSettings.Name, 
                     string.Format(SettingsFileNameFormat, "txt")));
 
-            var configurationProvider = 
-                new YamlConfigurationProvider(tenantPath, false);
+            var configurationProvider = new YamlConfigurationProvider(new YamlConfigurationSource
+            {
+                Path = tenantPath,
+                Optional = false
+            });
 
             foreach (var key in shellSettings.Keys)
             {

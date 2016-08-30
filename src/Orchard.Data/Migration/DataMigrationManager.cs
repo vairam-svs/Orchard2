@@ -1,12 +1,12 @@
-﻿using Microsoft.Extensions.Logging;
-using Orchard.Data.Migration.Records;
-using Orchard.Environment.Extensions;
-using Orchard.Localization;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Orchard.Data.Migration.Records;
+using Orchard.Environment.Extensions;
+using Orchard.Localization;
 using YesSql.Core.Services;
 
 namespace Orchard.Data.Migration
@@ -45,13 +45,11 @@ namespace Orchard.Data.Migration
 
         public Localizer T { get; set; }
 
-        public async Task<DataMigrationRecord> GetDataMigrationRecord()
+        public async Task<DataMigrationRecord> GetDataMigrationRecordAsync()
         {
             if (_dataMigrationRecord == null)
             {
-                _dataMigrationRecord = await _session
-                .QueryAsync<DataMigrationRecord>()
-                .FirstOrDefault();
+                _dataMigrationRecord = await _session.QueryAsync<DataMigrationRecord>().FirstOrDefault();
 
                 if (_dataMigrationRecord == null)
                 {
@@ -63,9 +61,9 @@ namespace Orchard.Data.Migration
             return _dataMigrationRecord;
         }
 
-        public async Task<IEnumerable<string>> GetFeaturesThatNeedUpdate()
+        public async Task<IEnumerable<string>> GetFeaturesThatNeedUpdateAsync()
         {
-            var currentVersions = (await GetDataMigrationRecord()).DataMigrations
+            var currentVersions = (await GetDataMigrationRecordAsync()).DataMigrations
                 .ToDictionary(r => r.DataMigrationClass);
 
             var outOfDateMigrations = _dataMigrations.Where(dataMigration =>
@@ -78,14 +76,6 @@ namespace Orchard.Data.Migration
             });
 
             return outOfDateMigrations.Select(m => _typeFeatureProvider.GetFeatureForDependency(m.GetType()).Descriptor.Id).ToList();
-        }
-
-        /// <summary>
-        /// Whether a feature has already been installed, i.e. one of its Data Migration class has already been processed
-        /// </summary>
-        public bool IsFeatureAlreadyInstalled(string feature)
-        {
-            return GetDataMigrations(feature).Any(dataMigration => GetDataMigrationRecordAsync(dataMigration).Result != null);
         }
 
         public async Task Uninstall(string feature)
@@ -116,7 +106,7 @@ namespace Orchard.Data.Migration
                     continue;
                 }
 
-                (await GetDataMigrationRecord()).DataMigrations.Remove(dataMigrationRecord);
+                (await GetDataMigrationRecordAsync()).DataMigrations.Remove(dataMigrationRecord);
             }
         }
 
@@ -162,10 +152,7 @@ namespace Orchard.Data.Migration
             // apply update methods to each migration class for the module
             foreach (var migration in migrations)
             {
-                // Create a new transaction for this migration
-                //await _session.CommitAsync();
-
-                _store.ExecuteMigration(async schemaBuilder =>
+                _session.ExecuteMigration(schemaBuilder =>
                 {
                     migration.SchemaBuilder = schemaBuilder;
 
@@ -173,12 +160,17 @@ namespace Orchard.Data.Migration
                     var tempMigration = migration;
 
                     // get current version for this migration
-                    var dataMigrationRecord = await GetDataMigrationRecordAsync(tempMigration);
+                    var dataMigrationRecord = GetDataMigrationRecordAsync(tempMigration).Result;
 
                     var current = 0;
                     if (dataMigrationRecord != null)
                     {
                         current = dataMigrationRecord.Version.Value;
+                    }
+                    else
+                    {
+                        dataMigrationRecord = new DataMigration { DataMigrationClass = migration.GetType().FullName };
+                        _dataMigrationRecord.DataMigrations.Add(dataMigrationRecord);
                     }
 
                     try
@@ -223,14 +215,8 @@ namespace Orchard.Data.Migration
                         {
                             return;
                         }
-                        if (dataMigrationRecord == null)
-                        {
-                            _dataMigrationRecord.DataMigrations.Add(new DataMigration { Version = current, DataMigrationClass = migration.GetType().FullName });
-                        }
-                        else
-                        {
-                            dataMigrationRecord.Version = current;
-                        }
+
+                        dataMigrationRecord.Version = current;
                     }
                     catch (Exception ex)
                     {
@@ -253,7 +239,9 @@ namespace Orchard.Data.Migration
 
         private async Task<DataMigration> GetDataMigrationRecordAsync(IDataMigration tempMigration)
         {
-            return (await GetDataMigrationRecord()).DataMigrations
+            var dataMigrationRecord = await GetDataMigrationRecordAsync();
+            return dataMigrationRecord
+                .DataMigrations
                 .FirstOrDefault(dm => dm.DataMigrationClass == tempMigration.GetType().FullName);
         }
 
@@ -330,6 +318,28 @@ namespace Orchard.Data.Migration
             }
 
             return null;
+        }
+
+        public async Task UpdateAllFeaturesAsync()
+        {
+            var featuresThatNeedUpdate = await GetFeaturesThatNeedUpdateAsync();
+
+            foreach (var feature in featuresThatNeedUpdate)
+            {
+                try
+                {
+                    await UpdateAsync(feature);
+                }
+                catch (Exception ex)
+                {
+                    if (ex.IsFatal())
+                    {
+                        throw;
+                    }
+
+                    _logger.LogError("Could not run migrations automatically on " + feature, ex);
+                }
+            }
         }
     }
 }

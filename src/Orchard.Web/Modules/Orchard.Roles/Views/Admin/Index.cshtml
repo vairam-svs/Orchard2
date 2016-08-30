@@ -1,0 +1,54 @@
+﻿@model Orchard.Roles.ViewModels.RolesViewModel
+
+<h1>@RenderTitleSegments(T["Roles"])</h1>
+
+<nav class="admin-toolbar">
+    <div class="nav navbar-nav">
+
+        <a asp-route-action="Create" class="btn btn-primary" role="button">@T["Add Role"]</a>
+
+        <!-- Single button -->
+        <div class="btn-group">
+            <button id="actions" type="button" class="btn btn-secondary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                @T["Actions"]
+            </button>
+            <div class="dropdown-menu" aria-labelledby="actions">
+                <a class="dropdown-item" href="#">@T["Approve"]</a>
+                <a class="dropdown-item" href="#">@T["Disable"]</a>
+                <a class="dropdown-item" href="#">@T["Send challenge E-mail"]</a>
+                <a class="dropdown-item" href="#">@T["Delete"]</a>
+            </div>
+        </div>
+
+
+        <form asp-action="Index" method="post" class="form-inline pull-xs-right">
+            <input id="search-box" class="form-control" type="text" placeholder="@T["Search"]" autofocus="autofocus">
+            <button type="submit" class="btn btn-secondary">@T["Search"]</button>
+        </form>
+    </div>
+</nav>
+
+@using (Html.BeginForm())
+{
+    <ul class="list-group">
+        <li class="list-group-item">
+            <input id="all" type="checkbox">
+        </li>
+
+        @for (var i = 0; i < Model.RoleEntries.Count; i++)
+        {
+            <li class="list-group-item">
+                <div class="properties">
+                    <div class="pull-xs-right">
+                        <a class="btn btn-primary btn-sm" role="button" asp-action="Edit" asp-route-id="@Model.RoleEntries[i].Name">@T["Edit"]</a>
+                        <a class="btn btn-secondary btn-sm" role="button" asp-action="Delete" itemprop="UnsafeUrl RemoveUrl">@T["Delete"]</a>
+                    </div>
+                </div>
+
+                <input asp-for="RoleEntries[i].Selected" type="checkbox">
+
+                @Model.RoleEntries[i].Name
+            </li>
+        }
+    </ul>
+}

@@ -1,28 +1,44 @@
-﻿using Microsoft.AspNet.Hosting;
-using Microsoft.Extensions.Configuration;
+﻿using System.IO;
+using System.Threading;
+using Microsoft.AspNetCore.Hosting;
 using Orchard.Hosting;
-using System.Threading.Tasks;
+using Orchard.Web;
 
 namespace Orchard.Console
 {
     public class Program
     {
-        //https://github.com/aspnet/Hosting/blob/dev/src/Microsoft.AspNet.Hosting/Program.cs
-        public Task<int> Main(string[] args)
+        public static void Main(string[] args)
         {
-            //Add command line configuration source to read command line parameters.
-            var builder = new ConfigurationBuilder().AddCommandLine(args);
-            var config = builder.Build();
+            var currentDirectory = Directory.GetCurrentDirectory();
 
-            var host = new WebHostBuilder(config, true)
-                .UseServer("Microsoft.AspNet.Server.Kestrel")
+            var host = new WebHostBuilder()
+                .UseIISIntegration()
+                .UseKestrel()
+                .UseContentRoot(currentDirectory)
+                .UseStartup<Startup>()
                 .Build();
-            using (var app = host.Start())
-            {
-                var orchardHost = new OrchardHost(app.Services, System.Console.In, System.Console.Out, args);
 
-                return Task.FromResult(
-                    (int)orchardHost.Run());
+            using (host)
+            {
+                using (var cts = new CancellationTokenSource())
+                {
+                    host.Run((services) =>
+                    {
+                        var orchardHost = new OrchardHost(
+                            services,
+                            System.Console.In,
+                            System.Console.Out,
+                            args);
+
+                        orchardHost
+                            .RunAsync()
+                            .Wait();
+
+                        cts.Cancel();
+
+                    }, cts.Token, "Application started. Press Ctrl+C to shut down.");
+                }
             }
         }
     }

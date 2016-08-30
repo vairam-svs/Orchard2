@@ -1,13 +1,14 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Orchard.Logging;
+using Orchard.DependencyInjection;
 using Orchard.Environment.Extensions;
 using Orchard.Environment.Extensions.Loaders;
+using Orchard.Logging;
 using System;
 using System.Linq;
-using Orchard.Environment.Shell.Builders;
 using System.Reflection;
-using Orchard.DependencyInjection;
+using System.Collections.Generic;
+using Orchard.Environment.Extensions.Models;
 
 namespace Orchard.Hosting.Extensions
 {
@@ -18,12 +19,13 @@ namespace Orchard.Hosting.Extensions
             IServiceProvider serviceProvider)
         {
             /* TODO (ngm): Abstract this logger stuff outta here! */
-            var loader = serviceProvider.GetRequiredService<IExtensionLoader>();
             var manager = serviceProvider.GetRequiredService<IExtensionManager>();
 
             var descriptor = manager.GetExtension("Orchard.Logging.Console");
-            var entry = loader.Load(descriptor);
-            var loggingInitiatorTypes = entry
+
+            var extension = manager.LoadExtension(descriptor);
+
+            var loggingInitiatorTypes = extension
                 .Assembly
                 .ExportedTypes
                 .Where(et => typeof(ILoggingInitiator).IsAssignableFrom(et));

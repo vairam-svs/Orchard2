@@ -1,0 +1,48 @@
+﻿@model EditRoleViewModel
+@using Orchard.Roles.ViewModels;
+
+<h1>@RenderTitleSegments(T["Edit Role {0}", Model.Name])</h1>
+
+<nav class="admin-toolbar">
+    <div class="nav navbar-nav">
+        <form asp-action="Index" method="post" class="form-inline pull-xs-right">
+            <input id="search-box" class="form-control" type="text" placeholder="@T["Search"]" autofocus="autofocus">
+            <button type="submit" class="btn btn-secondary">@T["Search"]</button>
+        </form>
+    </div>
+</nav>
+
+@using (Html.BeginForm())
+{
+    <fieldset>
+        @foreach (var category in Model.RoleCategoryPermissions.Keys)
+        {
+            <fieldset>
+                <legend>@category</legend>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th class="col-xs-10">@T["Permission"]</th>
+                            <th class="col-xs-1">@T["Allow"]</th>
+                            <th class="col-xs-1">@T["Effective"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var permission in Model.RoleCategoryPermissions[category])
+                        {
+                            <tr>
+                                <td class="col-xs-10">@permission.Description</td>
+                                <td class="col-xs-1">
+                                    <input type="checkbox" value="true" name="Checkbox.@permission.Name" checked="@(Model.Role.RoleClaims.Any(x => x.ClaimValue == permission.Name))" />
+                                </td>
+                                <td class="col-xs-1">
+                                    <input type="checkbox" disabled="disabled" name="Effective.@permission.Name" checked="@(Model.EffectivePermissions.Contains(permission.Name))" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </fieldset>
+        }
+    </fieldset>
+}

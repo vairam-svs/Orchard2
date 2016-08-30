@@ -1,4 +1,6 @@
 ﻿using Orchard.FileSystem.AppData;
+using Microsoft.Extensions.FileProviders;
+using Orchard.FileSystem;
 using System;
 using System.IO;
 using System.Linq;
@@ -11,28 +13,28 @@ namespace Orchard.Tests.FileSystem
         private string _tempFolder;
         private IAppDataFolder _appDataFolder;
 
-        public class StubAppDataFolderRoot : IAppDataFolderRoot
+        public IAppDataFolder CreateAppDataFolder(string tempFolder)
         {
-            public string RootPath { get; set; }
-            public string RootFolder { get; set; }
-        }
-
-        public static IAppDataFolder CreateAppDataFolder(string tempFolder)
-        {
-            var folderRoot = new StubAppDataFolderRoot { RootPath = "~/App_Data", RootFolder = tempFolder };
-            return new PhysicalAppDataFolder(folderRoot, new NullLogger<PhysicalAppDataFolder>());
+            return new PhysicalAppDataFolder(
+                new OrchardFileSystem("App_Data", new PhysicalFileProvider(tempFolder), new NullLogger<OrchardFileSystem>()), 
+                new NullLogger<PhysicalAppDataFolder>());
         }
 
         public PhysicalAppDataFolderTests()
         {
             _tempFolder = Path.GetTempFileName();
             File.Delete(_tempFolder);
-            Directory.CreateDirectory(Path.Combine(_tempFolder, "alpha"));
-            File.WriteAllText(Path.Combine(_tempFolder, "alpha\\beta.txt"), "beta-content");
-            File.WriteAllText(Path.Combine(_tempFolder, "alpha\\gamma.txt"), "gamma-content");
-            Directory.CreateDirectory(Path.Combine(_tempFolder, "alpha\\omega"));
+            Directory.CreateDirectory(_tempFolder); 
+             _appDataFolder = CreateAppDataFolder(_tempFolder);
 
-            _appDataFolder = CreateAppDataFolder(_tempFolder);
+            string alpha1 = String.Format("App_Data{0}alpha{0}beta.txt",Path.DirectorySeparatorChar);
+            string alpha2 = String.Format("App_Data{0}alpha{0}gamma.txt",Path.DirectorySeparatorChar);
+            string alpha3 = String.Format("App_Data{0}alpha{0}omega",Path.DirectorySeparatorChar);
+
+            Directory.CreateDirectory(Path.Combine(_tempFolder, String.Format("App_Data{0}alpha",Path.DirectorySeparatorChar)));
+            File.WriteAllText(Path.Combine(_tempFolder, alpha1), "beta-content");
+            File.WriteAllText(Path.Combine(_tempFolder, alpha2), "gamma-content");
+            Directory.CreateDirectory(Path.Combine(_tempFolder, alpha3));
         }
 
         public void Dispose()
@@ -44,7 +46,7 @@ namespace Orchard.Tests.FileSystem
         public void ListFilesShouldContainFileInfo()
         {
             var files = _appDataFolder.ListFiles("alpha").Select(x => x.Name).ToList();
-            Assert.Equal(2, files.Count());
+            Assert.Equal(3, files.Count());
             Assert.Contains("beta.txt", files);
             Assert.Contains("gamma.txt", files);
         }
@@ -59,8 +61,8 @@ namespace Orchard.Tests.FileSystem
         [Fact]
         public void PhysicalPathAddsToBasePathAndDoesNotNeedToExist()
         {
-            var physicalPath = _appDataFolder.MapPath("delta\\epsilon.txt");
-            Assert.Equal(Path.Combine(_tempFolder, "delta\\epsilon.txt"), physicalPath);
+            var physicalPath = _appDataFolder.MapPath(String.Format("delta{0}epsilon.txt",Path.DirectorySeparatorChar));
+            Assert.Equal(Path.Combine(_tempFolder, String.Format("App_Data{0}delta{0}epsilon.txt",Path.DirectorySeparatorChar)), physicalPath);
         }
 
         [Fact]
@@ -74,7 +76,7 @@ namespace Orchard.Tests.FileSystem
         [Fact]
         public void ListSubdirectoriesShouldWorkInRoot()
         {
-            var files = _appDataFolder.ListDirectories("").Select(x => x.Name);
+            var files = _appDataFolder.ListDirectories("/").Select(x => x.Name);
             Assert.Equal(1, files.Count());
             Assert.Contains("alpha", files);
         }
@@ -89,20 +91,22 @@ namespace Orchard.Tests.FileSystem
         [Fact]
         public void CreateFileWillCauseDirectoryToBeCreated()
         {
-            Assert.False(Directory.Exists(Path.Combine(_tempFolder, "alpha\\omega\\foo")));
-            _appDataFolder.CreateFile("alpha\\omega\\foo\\bar.txt", "quux");
-            Assert.True(Directory.Exists(Path.Combine(_tempFolder, "alpha\\omega\\foo")));
+            Assert.False(Directory.Exists(Path.Combine(_tempFolder, String.Format("App_Data{0}alpha{0}omega{0}foo",Path.DirectorySeparatorChar))));
+            _appDataFolder.CreateFileAsync(String.Format("alpha{0}omega{0}foo{0}bar.txt",Path.DirectorySeparatorChar),"quux").Wait();
+            Assert.True(Directory.Exists(Path.Combine(_tempFolder, String.Format("App_Data{0}alpha{0}omega{0}foo",
+                                                                        Path.DirectorySeparatorChar))));
         }
 
 
         [Fact]
         public void FilesCanBeReadBack()
         {
-            _appDataFolder.CreateFile("alpha\\gamma\\foo\\bar.txt", @"
+            _appDataFolder.CreateFileAsync(String.Format("alpha{0}gamma{0}foo{0}bar.txt",Path.DirectorySeparatorChar), @"
 this is
 a
-test");
-            var text = File.ReadAllText(_appDataFolder.GetFileInfo("alpha\\gamma\\foo\\bar.txt").PhysicalPath);
+test").Wait();
+            var text = File.ReadAllText(_appDataFolder.GetFileInfo(String.Format("alpha{0}gamma{0}foo{0}bar.txt",
+                                                        Path.DirectorySeparatorChar)).PhysicalPath);
             Assert.Equal(@"
 this is
 a
@@ -118,8 +122,8 @@ test", text);
         [Fact]
         public void FileExistsReturnsTrueForExistingFile()
         {
-            _appDataFolder.CreateFile("alpha\\foo\\bar.txt", "");
-            Assert.True(_appDataFolder.GetFileInfo("alpha\\foo\\bar.txt").Exists);
+            _appDataFolder.CreateFile(String.Format("alpha{0}foo{0}bar.txt",Path.DirectorySeparatorChar));
+            Assert.True(_appDataFolder.GetFileInfo(String.Format("alpha{0}foo{0}bar.txt",Path.DirectorySeparatorChar)).Exists);
         }
     }
 }

@@ -1,10 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Orchard.DependencyInjection;
-using Orchard.Environment.Extensions;
-using Orchard.Environment.Shell.Builders.Models;
-using Orchard.Events;
-using Orchard.FileSystem.AppData;
+﻿#define SQL
+
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -12,10 +7,15 @@ using System.Data.SqlClient;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Orchard.DependencyInjection;
+using Orchard.Environment.Shell.Builders.Models;
+using Orchard.Events;
 using YesSql.Core.Indexes;
 using YesSql.Core.Services;
 using YesSql.Storage.Sql;
-using Microsoft.AspNet.Mvc.Filters;
 
 namespace Orchard.Environment.Shell.Builders
 {
@@ -24,45 +24,59 @@ namespace Orchard.Environment.Shell.Builders
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger _logger;
         private readonly ILoggerFactory _loggerFactory;
-        private readonly IAppDataFolderRoot _appDataFolderRoot;
         private readonly IServiceCollection _applicationServices;
 
         public ShellContainerFactory(
             IServiceProvider serviceProvider,
             ILoggerFactory loggerFactory,
             ILogger<ShellContainerFactory> logger,
-            IAppDataFolderRoot appDataFolderRoot,
             IServiceCollection applicationServices)
         {
             _applicationServices = applicationServices;
             _serviceProvider = serviceProvider;
-            _appDataFolderRoot = appDataFolderRoot;
             _loggerFactory = loggerFactory;
             _logger = logger;
         }
 
+        public void AddCoreServices(IServiceCollection services)
+        {
+            services.AddScoped<IShellStateUpdater, ShellStateUpdater>();
+            services.AddScoped<IShellStateManager, ShellStateManager>();
+            services.AddScoped<ShellStateCoordinator>();
+            services.AddScoped<IShellDescriptorManagerEventHandler>(sp => sp.GetRequiredService<ShellStateCoordinator>());
+        }
+
         public IServiceProvider CreateContainer(ShellSettings settings, ShellBlueprint blueprint)
         {
-            var featureByType = blueprint.Dependencies.ToDictionary(x => x.Type, x => x.Feature);
             IServiceCollection tenantServiceCollection = _serviceProvider.CreateChildContainer(_applicationServices);
 
-            tenantServiceCollection.AddInstance(settings);
-            tenantServiceCollection.AddInstance(blueprint.Descriptor);
-            tenantServiceCollection.AddInstance(blueprint);
+            tenantServiceCollection.AddSingleton(settings);
+            tenantServiceCollection.AddSingleton(blueprint.Descriptor);
+            tenantServiceCollection.AddSingleton(blueprint);
+
+            AddCoreServices(tenantServiceCollection);
 
             // Sure this is right?
-            tenantServiceCollection.AddInstance(_loggerFactory);
+            tenantServiceCollection.AddSingleton(_loggerFactory);
 
-            foreach (var dependency in blueprint.Dependencies
-                .Where(t => !typeof(IModule).IsAssignableFrom(t.Type)))
+            foreach (var dependency in blueprint.Dependencies)
             {
-                foreach (var interfaceType in dependency.Type.GetInterfaces()
-                    .Where(itf => typeof(IDependency).IsAssignableFrom(itf)))
+                foreach (var interfaceType in dependency.Type.GetInterfaces())
                 {
+                    // GetInterfaces returns the full hierarchy of interfaces
+                    if (interfaceType == typeof(ISingletonDependency) ||
+                        interfaceType == typeof(ITransientDependency) ||
+                        interfaceType == typeof(IDependency) ||
+                        !typeof(IDependency).IsAssignableFrom(interfaceType))
+                    {
+                        continue;
+                    }
+
                     if (_logger.IsEnabled(LogLevel.Debug))
                     {
                         _logger.LogDebug("Type: {0}, Interface Type: {1}", dependency.Type, interfaceType);
                     }
+
                     if (typeof(ISingletonDependency).IsAssignableFrom(interfaceType))
                     {
                         tenantServiceCollection.AddSingleton(interfaceType, dependency.Type);
@@ -129,80 +143,97 @@ namespace Orchard.Environment.Shell.Builders
             //    tenantServiceCollection.ConfigureOptions(optionObject);
             //}
 
+            // Execute IStartup registrations
+
+            // TODO: Use StartupLoader in RTM and then don't need to register the classes anymore then
+
+            IServiceCollection moduleServiceCollection = _serviceProvider.CreateChildContainer(_applicationServices);
+
+            foreach (var dependency in blueprint.Dependencies.Where(t => typeof(IStartup).IsAssignableFrom(t.Type)))
+            {
+                moduleServiceCollection.AddSingleton(typeof(IStartup), dependency.Type);
+                tenantServiceCollection.AddSingleton(typeof(IStartup), dependency.Type);
+            }
+
+            // Make shell settings available to the modules
+            moduleServiceCollection.AddSingleton(settings);
+
+            var moduleServiceProvider = moduleServiceCollection.BuildServiceProvider();
+
+            // Let any module add custom service descriptors to the tenant
+            foreach (var service in moduleServiceProvider.GetServices<IStartup>())
+            {
+                service.ConfigureServices(tenantServiceCollection);
+            }
+
             // Configuring data access
-            var indexes = blueprint
-            .Dependencies
-            .Where(x => typeof(IIndexProvider).IsAssignableFrom(x.Type))
-            .Select(x => x.Type).ToArray();
+
+            var indexes = tenantServiceCollection
+                .Select(x => x.ImplementationType)
+                .Where(t => t != null && typeof(IIndexProvider).IsAssignableFrom(t) && t.GetTypeInfo().IsClass)
+                .Distinct()
+                .ToArray();
 
             if (settings.DatabaseProvider != null)
             {
                 var store = new Store(cfg =>
+                {
+                    IConnectionFactory connectionFactory = null;
+
+                    switch (settings.DatabaseProvider)
                     {
-                        // @"Data Source =.; Initial Catalog = test1; User Id=sa;Password=demo123!"
-
-                        IConnectionFactory connectionFactory = null;
-
-                        switch (settings.DatabaseProvider)
-                        {
-                            case "SqlConnection":
-                                connectionFactory = new DbConnectionFactory<SqlConnection>(settings.ConnectionString);
-                                break;
-                            //case "SqliteConnection":
-                            //    connectionFactory = new DbConnectionFactory<SqliteConnection>(settings.ConnectionString);
-                            //    break;
-                            default:
-                                throw new ArgumentException("Unkown database provider: " + settings.DatabaseProvider);
-                        }
-
-                        var sqlFactory = new SqlDocumentStorageFactory(connectionFactory); ;
-
-                        cfg.ConnectionFactory = connectionFactory;
-                        cfg.DocumentStorageFactory = sqlFactory;
-                        cfg.IsolationLevel = sqlFactory.IsolationLevel = IsolationLevel.ReadUncommitted;
-
-                        if (!String.IsNullOrWhiteSpace(settings.TablePrefix))
-                        {
-                            cfg.TablePrefix = sqlFactory.TablePrefix = settings.TablePrefix + "_";
-                        }
-
-                        //cfg.RunDefaultMigration();
+                        case "SqlConnection":
+                            connectionFactory = new DbConnectionFactory<SqlConnection>(settings.ConnectionString);
+                            break;
+                        case "SqliteConnection":
+                            connectionFactory = new DbConnectionFactory<SqliteConnection>(settings.ConnectionString);
+                            break;
+                        default:
+                            throw new ArgumentException("Unknown database provider: " + settings.DatabaseProvider);
                     }
+
+                    cfg.ConnectionFactory = connectionFactory;
+                    cfg.IsolationLevel = IsolationLevel.ReadUncommitted;
+
+                    if (!String.IsNullOrWhiteSpace(settings.TablePrefix))
+                    {
+                        cfg.TablePrefix = settings.TablePrefix + "_";
+                    }
+#if SQL
+                    var sqlFactory = new SqlDocumentStorageFactory(connectionFactory);
+                    sqlFactory.IsolationLevel = IsolationLevel.ReadUncommitted;
+                    sqlFactory.ConnectionFactory = connectionFactory;
+                    if (!String.IsNullOrWhiteSpace(settings.TablePrefix))
+                    {
+                        sqlFactory.TablePrefix = settings.TablePrefix + "_";
+                    }
+                    cfg.DocumentStorageFactory = sqlFactory;
+#else
+                        var storageFactory = new LightningDocumentStorageFactory(Path.Combine(_appDataFolderRoot.RootFolder, "Sites", settings.Name, "Documents"));
+                        cfg.DocumentStorageFactory = storageFactory;
+#endif
+
+
+                    //cfg.RunDefaultMigration();
+                }
                 );
 
                 var idGenerator = new LinearBlockIdGenerator(store.Configuration.ConnectionFactory, 20, "contentitem", store.Configuration.TablePrefix);
 
                 store.RegisterIndexes(indexes);
 
-                tenantServiceCollection.AddInstance<IStore>(store);
-                tenantServiceCollection.AddInstance<LinearBlockIdGenerator>(idGenerator);
+                tenantServiceCollection.AddSingleton<IStore>(store);
+                tenantServiceCollection.AddSingleton<LinearBlockIdGenerator>(idGenerator);
 
-                tenantServiceCollection.AddScoped<ISession>(serviceProvider =>
-                    store.CreateSession()
-                );
+                tenantServiceCollection.AddScoped<ISession>(serviceProvider => store.CreateSession());
             }
 
-            tenantServiceCollection.AddInstance<ITypeFeatureProvider>(new TypeFeatureProvider(featureByType));
-
-            IServiceCollection moduleServiceCollection =
-                _serviceProvider.CreateChildContainer(_applicationServices);
-
-            foreach (var dependency in blueprint.Dependencies
-                .Where(t => typeof(IModule).IsAssignableFrom(t.Type)))
-            {
-                moduleServiceCollection.AddScoped(typeof(IModule), dependency.Type);
-            }
-
-            var moduleServiceProvider = moduleServiceCollection.BuildServiceProvider();
-
-            // Let any module add custom service descriptors to the tenant
-            foreach (var service in moduleServiceProvider.GetServices<IModule>())
-            {
-                service.Configure(tenantServiceCollection);
-            }
+            // add already instanciated services like DefaultOrchardHost
+            var applicationServiceDescriptors = _applicationServices.Where(x => x.Lifetime == ServiceLifetime.Singleton);
 
             // Register event handlers on the event bus
             var eventHandlers = tenantServiceCollection
+                .Union(applicationServiceDescriptors)
                 .Select(x => x.ImplementationType)
                 .Distinct()
                 .Where(t => t != null && typeof(IEventHandler).IsAssignableFrom(t) && t.GetTypeInfo().IsClass)
@@ -210,12 +241,10 @@ namespace Orchard.Environment.Shell.Builders
 
             foreach (var handlerClass in eventHandlers)
             {
-                tenantServiceCollection.AddScoped(handlerClass);
-
                 // Register dynamic proxies to intercept direct calls if an IEventHandler is resolved, dispatching the call to
                 // the event bus.
 
-                foreach (var i in handlerClass.GetInterfaces().Where(t => typeof(IEventHandler).IsAssignableFrom(t)))
+                foreach (var i in handlerClass.GetInterfaces().Where(t => t != typeof(IEventHandler) && typeof(IEventHandler).IsAssignableFrom(t)))
                 {
                     tenantServiceCollection.AddScoped(i, serviceProvider =>
                     {
